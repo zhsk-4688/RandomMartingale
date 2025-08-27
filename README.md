@@ -2,8 +2,10 @@
 
 ## Overview / 概述
 This is an automated trading robot based on MetaTrader 5 platform, implementing a unique trading strategy that combines traditional candlestick patterns with random number generation and martingale money management.
+Measured change from 100 USD to 200 USD in three days
 
 这是一个基于MetaTrader 5平台的自动化交易机器人，实现了独特的交易策略，结合了传统K线形态分析、随机数生成和马丁格尔资金管理。
+100U三天翻仓
 
 ## Features / 功能特点
 - **Yin-Yang Candlestick Analysis** / 阴阳K线分析: Analyzes current candlestick pattern (bullish/bearish)
