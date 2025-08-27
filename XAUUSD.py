@@ -1,6 +1,7 @@
 """
 Random Martingale Trading Bot - 优化版本
 基于随机数生成和马丁格尔策略的自动交易机器人
+优化了配置管理，所有配置集中到config.json
 """
 
 import MetaTrader5 as mt5
@@ -9,8 +10,8 @@ import random
 import os
 import json
 from datetime import datetime, timedelta
-from typing import Optional, Tuple, Dict, Any
-from dataclasses import dataclass
+from typing import Optional, Tuple, Dict, Any, List
+from dataclasses import dataclass, asdict
 from enum import Enum
 import logging
 
@@ -47,10 +48,16 @@ class TradingConfig:
     max_martingale_multiplier: int = 8
     cooling_time: int = 64
     check_interval: int = 5
-    seed_config_file: str = "种子配置.txt"
     magic_number: int = 234000
     deviation: int = 20
-    default_seed: int = 1006111951111
+    seed: int = 1006111951111
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'TradingConfig':
+        return cls(**data)
 
 
 @dataclass
@@ -75,13 +82,21 @@ class MT5Config:
     login: int
     server: str
     password: str
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'MT5Config':
+        return cls(**data)
 
 
 class ConfigManager:
-    """配置管理器"""
+    """配置管理器 - 优化版本"""
     
     def __init__(self, config_file: str = "config.json"):
         self.config_file = config_file
+        self.last_modified = 0
         self.config = self._load_config()
     
     def _load_config(self) -> Dict[str, Any]:
@@ -97,7 +112,9 @@ class ConfigManager:
                 "base_lot_size": 0.01,
                 "max_martingale_multiplier": 8,
                 "cooling_time": 64,
-                "magic_number": 234000
+                "magic_number": 234000,
+                "deviation": 20,
+                "seed": 1006111951111
             }
         }
         
@@ -109,75 +126,88 @@ class ConfigManager:
         
         try:
             with open(self.config_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                config = json.load(f)
+                
+            # 确保配置完整性，添加缺失的字段
+            updated = False
+            for section, default_values in default_config.items():
+                if section not in config:
+                    config[section] = default_values
+                    updated = True
+                else:
+                    for key, value in default_values.items():
+                        if key not in config[section]:
+                            config[section][key] = value
+                            updated = True
+            
+            if updated:
+                with open(self.config_file, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, indent=2, ensure_ascii=False)
+                logger.info("配置文件已更新，添加了缺失的字段")
+                
+            return config
         except Exception as e:
             logger.error(f"加载配置文件失败: {e}")
             return default_config
     
+    def check_for_updates(self) -> bool:
+        """检查配置文件是否有更新"""
+        if not os.path.exists(self.config_file):
+            return False
+            
+        current_modified = os.path.getmtime(self.config_file)
+        if current_modified > self.last_modified:
+            new_config = self._load_config()
+            if new_config != self.config:
+                self.config = new_config
+                self.last_modified = current_modified
+                return True
+                
+        return False
+    
     def get_mt5_config(self) -> MT5Config:
         """获取MT5配置"""
         mt5_config = self.config.get("mt5", {})
-        return MT5Config(
-            login=mt5_config.get("login", 0),
-            server=mt5_config.get("server", ""),
-            password=mt5_config.get("password", "")
-        )
+        return MT5Config.from_dict(mt5_config)
     
     def get_trading_config(self) -> TradingConfig:
         """获取交易配置"""
         trading_config = self.config.get("trading", {})
-        return TradingConfig(
-            symbol=trading_config.get("symbol", "XAUUSDm"),
-            base_lot_size=trading_config.get("base_lot_size", 0.01),
-            max_martingale_multiplier=trading_config.get("max_martingale_multiplier", 8),
-            cooling_time=trading_config.get("cooling_time", 64),
-            magic_number=trading_config.get("magic_number", 234000)
-        )
+        return TradingConfig.from_dict(trading_config)
+    
+    def update_trading_config(self, updates: Dict[str, Any]) -> bool:
+        """更新交易配置"""
+        try:
+            if "trading" not in self.config:
+                self.config["trading"] = {}
+                
+            self.config["trading"].update(updates)
+            
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(self.config, f, indent=2, ensure_ascii=False)
+                
+            self.last_modified = os.path.getmtime(self.config_file)
+            logger.info("交易配置已更新")
+            return True
+        except Exception as e:
+            logger.error(f"更新交易配置失败: {e}")
+            return False
 
 
 class SeedManager:
-    """种子管理器"""
+    """种子管理器 - 简化版本，从配置管理器获取种子"""
     
-    def __init__(self, seed_file: str = "种子配置.txt", default_seed: int = 1006111951111):
-        self.seed_file = seed_file
-        self.default_seed = default_seed
-        self.last_modified = 0
-        self.current_seed = self._load_seed()
-    
-    def _load_seed(self) -> int:
-        """从配置文件加载种子"""
-        if not os.path.exists(self.seed_file):
-            return self.default_seed
-        
-        try:
-            encodings = ['utf-8', 'gbk', 'utf-16', 'ascii']
-            for encoding in encodings:
-                try:
-                    with open(self.seed_file, 'r', encoding=encoding) as f:
-                        for line in f:
-                            line = line.strip()
-                            if line and not line.startswith('#'):
-                                seed_value = int(line)
-                                if seed_value > 0:
-                                    return seed_value
-                    break
-                except UnicodeDecodeError:
-                    continue
-            return self.default_seed
-        except Exception as e:
-            logger.error(f"读取种子配置文件失败: {e}")
-            return self.default_seed
+    def __init__(self, config_manager: ConfigManager):
+        self.config_manager = config_manager
+        self.current_seed = self.config_manager.get_trading_config().seed
     
     def get_seed(self) -> int:
-        """获取当前种子，如果文件有更新则重新加载"""
-        if os.path.exists(self.seed_file):
-            current_modified = os.path.getmtime(self.seed_file)
-            if current_modified > self.last_modified:
-                new_seed = self._load_seed()
-                if new_seed != self.current_seed:
-                    self.current_seed = new_seed
-                    logger.info(f"种子配置已更新: {self.current_seed}")
-                self.last_modified = current_modified
+        """获取当前种子，如果配置有更新则重新加载"""
+        if self.config_manager.check_for_updates():
+            new_seed = self.config_manager.get_trading_config().seed
+            if new_seed != self.current_seed:
+                self.current_seed = new_seed
+                logger.info(f"种子配置已更新: {self.current_seed}")
         
         return self.current_seed
 
@@ -375,8 +405,8 @@ class TradeExecutor:
         pattern_display = ''.join(['阳' if x == 1 else '阴' for x in pattern_sequence])
         multiplier = lot_size / 0.01  # 假设基础手数是0.01
         
-        logger.info(f"RandomMartingale | {direction} | 开仓: {price:.5f} | "
-                   f"止损: {strategy.sl_points:.5f} | 止盈: {strategy.tp_points:.5f} | "
+        logger.info(f"RandomMartingale | {direction} | 开仓: {price:.3f} | "
+                   f"止损: {strategy.sl_points:.0f} | 止盈: {strategy.tp_points:.0f} | "
                    f"马丁倍数: {multiplier:.0f}x --( {pattern_display} )--")
         
         return PositionInfo(
@@ -454,12 +484,15 @@ class TradingBot:
         self.config_manager = ConfigManager()
         self.trading_config = self.config_manager.get_trading_config()
         self.mt5_config = self.config_manager.get_mt5_config()
-        self.seed_manager = SeedManager()
+        self.seed_manager = SeedManager(self.config_manager)
         self.martingale_manager = MartingaleManager(
             self.trading_config.base_lot_size,
             self.trading_config.max_martingale_multiplier
         )
-        self.trade_executor = TradeExecutor(self.trading_config.magic_number)
+        self.trade_executor = TradeExecutor(
+            self.trading_config.magic_number,
+            self.trading_config.deviation
+        )
         self.current_lot_size = self.trading_config.base_lot_size
     
     def _get_initial_lot_size(self) -> float:
@@ -471,18 +504,9 @@ class TradingBot:
                 multiplier = position_lot_size / self.trading_config.base_lot_size
                 logger.info(f"检测到现有持仓 | 持仓手数: {position_lot_size} | 当前马丁倍数: {multiplier:.0f}x")
                 return position_lot_size
-        else:
-            try:
-                user_multiplier = float(input("请输入开仓马丁倍数 (默认1): ") or "1")
-                if user_multiplier <= 0:
-                    user_multiplier = 1
-                    logger.warning("输入倍数无效，使用默认值1")
-                lot_size = self.trading_config.base_lot_size * user_multiplier
-                logger.info(f"用户设置马丁倍数: {user_multiplier:.0f}x | 开仓手数: {lot_size}")
-                return lot_size
-            except ValueError:
-                logger.warning("输入格式错误，使用默认倍数1x")
-                return self.trading_config.base_lot_size
+        
+        # 没有持仓时，使用配置中的基础手数
+        return self.trading_config.base_lot_size
     
     def run(self):
         """运行交易机器人"""
@@ -497,6 +521,11 @@ class TradingBot:
                 
                 while True:
                     try:
+                        # 检查配置更新
+                        if self.config_manager.check_for_updates():
+                            self.trading_config = self.config_manager.get_trading_config()
+                            logger.info("配置已更新，应用新设置")
+                        
                         self._trading_loop()
                     except Exception as e:
                         logger.error(f"交易循环出错: {e}")

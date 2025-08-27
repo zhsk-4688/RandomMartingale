@@ -1,96 +1,177 @@
-# RandomMartingale Trading Bot / 随机马丁格尔交易机器人
+📖 项目简介 | Project Introduction
 
-## Overview / 概述
-This is an automated trading robot based on MetaTrader 5 platform, implementing a unique trading strategy that combines traditional candlestick patterns with random number generation and martingale money management.
-Measured change from 100 USD to 200 USD in three days
+本项目是一个基于 MetaTrader5 (MT5) 的自动化交易机器人，
+结合 梅花易数的随机卦象推演 与 马丁格尔资金管理策略，
+目标是在 两天内实现翻仓（高风险高收益）。
 
-这是一个基于MetaTrader 5平台的自动化交易机器人，实现了独特的交易策略，结合了传统K线形态分析、随机数生成和马丁格尔资金管理。
-100U三天翻仓
+This project is an automated trading bot based on MetaTrader5 (MT5).
+It integrates Meihua Yishu (random divination-based strategy) with Martingale money management,
+aiming to double the account within two days (high risk, high reward).
 
-## Features / 功能特点
-- **Yin-Yang Candlestick Analysis** / 阴阳K线分析: Analyzes current candlestick pattern (bullish/bearish)
-- **Random Number Strategy** / 随机数策略: Generates trading signals based on a combination of candlestick pattern and random numbers
-- **Martingale Money Management** / 马丁格尔资金管理: Automatically adjusts position size based on trading results
-- **Configurable Random Seed** / 可配置随机种子: Allows users to modify the random number generation behavior
-- **Real-time Trading** / 实时交易: Executes trades automatically on MT5 platform
 
-## Requirements / 系统要求
-- **MetaTrader 5** platform installed
-- **Python 3.7+** with following packages:
-  - `MetaTrader5`
-  - `pandas`
-  - `logging` (custom module)
-- MT5 account with valid credentials
+---
 
-## Installation / 安装步骤
-1. Install Python dependencies:
-```bash
-pip install MetaTrader5 pandas
-```
+⚙️ 核心逻辑 | Core Logic
 
-2. Configure your MT5 account credentials in the script:
-```python
-登录名 = 账户
-服务器 = 服务器
-密码 = 账户密码
-```
+1. 梅花易数推演 | Meihua Yishu Calculation
 
-3. Adjust trading parameters as needed:
-```python
-交易品种 = "XAUUSDm"  # Trading symbol
-基础手数 = 0.01      # Base lot size
-冷却时间 = 64        # Cooldown time in seconds
-```
+每根 K 线（阴/阳）对应卦象中的爻。
 
-## Configuration / 配置说明
-The bot uses a seed configuration file (`种子配置.txt`) to control random number generation:
+使用 K 线形态 + 随机数种子 + 时间戳 生成 3 个随机数。
 
-机器人使用种子配置文件(`种子配置.txt`)来控制随机数生成：
+最终形成 4位组合（K线阴阳 + 3个随机数）。
 
-### Seed File Format / 种子文件格式
-```
-# Random seed configuration file
-# Modify the seed value in this file, the script will auto-read new seeds
-# Format: One seed value per line, script reads the first valid number
+对应 止盈 / 止损 点数 配置表。
 
-100611193115
 
-# Instructions:
-# 1. Seed value must be a positive integer
-# 2. Lines starting with # are comments and will be ignored
-# 3. Empty lines will be ignored
-# 4. Script periodically checks file modification time and re-reads if changed
-```
+Each candlestick (bullish/bearish) corresponds to a hexagram line.
 
-## Strategy Details / 策略详情
-### Trading Signal Generation / 交易信号生成
-1. Gets current candlestick pattern (bullish=1, bearish=0)
-2. Generates 3 random numbers (0 or 1) based on seed + timestamp
-3. Combines these 4 values to determine trading strategy from a predefined strategy table
-4. Determines order direction based on majority of random numbers
+Use candlestick pattern + random seed + timestamp to generate 3 random numbers.
 
-### Money Management / 资金管理
-- Implements martingale strategy: doubles position size after losses
-- Resets to base lot size after profitable trade
-- Maximum multiplier limit prevents excessive risk
+Form a 4-digit sequence (candle + 3 random numbers).
 
-## Risk Warning / 风险警告
-- Martingale strategy can lead to significant losses during prolonged losing streaks
-- Use proper risk management and only risk capital you can afford to lose
-- Test thoroughly in demo account before live trading
+Map the sequence to a Take Profit (TP) / Stop Loss (SL) rule.
 
-## Usage / 使用说明
-1. Ensure MT5 platform is running and logged in
-2. Run the script: `python 邵庸.py`
-3. Input initial martingale multiplier when prompted
-4. The bot will automatically monitor market and execute trades
 
-## File Structure / 文件结构
-- `邵庸.py` - Main trading bot script
-- `种子配置.txt` - Random seed configuration file
-- `Logging.py` - Custom logging module (not provided)
 
-## Disclaimer / 免责声明
-This trading bot is for educational purposes only. Use at your own risk. Past performance is not indicative of future results. The authors are not responsible for any financial losses incurred.
+---
 
-本交易机器人仅用于教育目的。使用风险自负。过去的表现并不代表未来的结果。作者不对任何财务损失负责。
+2. 马丁格尔资金管理 | Martingale Money Management
+
+初始手数由 config.json 配置（默认 0.01）。
+
+每次亏损 → 加倍手数，追求一次盈利覆盖前面亏损。
+
+每次盈利 → 回退手数，直至恢复到基础手数。
+
+最大马丁倍数：max_martingale_multiplier = 8。
+
+
+Initial lot size is defined in config.json (default 0.01).
+
+After each loss → double the lot size until recovery.
+
+After each profit → reduce lot size until back to base.
+
+Max Martingale multiplier: 8x.
+
+
+
+---
+
+3. 风控与冷却 | Risk Control & Cooling
+
+每次交易后，等待 持仓平仓 才能继续下一次循环。
+
+平仓后等待 64 秒冷却时间（对应六十四卦）。
+
+交易方向由随机卦象中的“阴阳数量”决定：
+
+阳数多 → 买入 (BUY)
+
+阴数多 → 卖出 (SELL)
+
+
+
+After each trade, the bot waits for position closure before starting the next.
+
+After closure, wait for 64 seconds cooling time (matching 64 hexagrams).
+
+Trade direction is based on the balance of Yin/Yang in the random sequence:
+
+More Yang → BUY
+
+More Yin → SELL
+
+
+
+
+---
+
+📂 文件结构 | File Structure
+
+XAUUSD.py       # 主程序 Main trading bot
+config.json     # 配置文件 (交易参数 & MT5 账户信息)
+trading_bot.log # 运行日志 Logs
+
+
+---
+
+🔧 配置说明 | Configuration
+
+config.json 示例 | Example:
+
+{
+  "mt5": {
+    "login": 123456789,
+    "server": "BrokerServer",
+    "password": "password"
+  },
+  "trading": {
+    "symbol": "XAUUSDm",
+    "base_lot_size": 0.01,
+    "max_martingale_multiplier": 8,
+    "cooling_time": 64,
+    "magic_number": 234000,
+    "deviation": 20,
+    "seed": 1006111951111
+  }
+}
+
+
+---
+
+🚀 使用方法 | Usage
+
+1. 安装依赖 | Install dependencies
+
+pip install MetaTrader5
+
+
+2. 修改 config.json，填入你的 MT5 账户信息。
+Edit config.json with your MT5 account info.
+
+
+3. 运行机器人 | Run the bot
+
+python XAUUSD.py
+
+
+4. 查看日志 | Check logs
+
+终端实时输出 | Real-time console output
+
+trading_bot.log 文件 | Log file
+
+
+
+
+
+---
+
+⚠️ 风险提示 | Risk Warning
+
+⚠️ 本策略属于 极高风险投机策略，
+目标是 两天翻仓，但同样可能在短时间内爆仓。
+
+⚠️ This strategy is extremely high risk.
+While it targets doubling in two days, it may also blow up the account quickly.
+
+
+---
+
+✨ 总结 | Summary
+
+结合 梅花易数卦象推演（随机数+K线阴阳）
+
+搭配 马丁格尔资金管理
+
+高风险 → 高收益（或高亏损）
+
+适用于 实验性/研究性交易，不推荐实盘大额资金使用。
+
+
+Integrates Meihua Yishu divination (randomness + candlesticks)
+with Martingale money management.
+High risk → High reward (or loss).
+Best suited for experimental / research trading, not recommended for large real accounts.

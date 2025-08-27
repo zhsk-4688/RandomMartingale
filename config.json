@@ -1,0 +1,16 @@
+{
+  "mt5": {
+    "login": 0,
+    "server": "",
+    "password": ""
+  },
+  "trading": {
+    "symbol": "XAUUSDm",
+    "base_lot_size": 0.01,
+    "max_martingale_multiplier": 8,
+    "cooling_time": 64,
+    "magic_number": 234000,
+    "deviation": 20,
+    "seed": 1006111951111
+  }
+}
